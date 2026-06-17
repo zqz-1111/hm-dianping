@@ -2,6 +2,7 @@ package com.hmdp.utils;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.http.HttpStatus;
 import com.hmdp.dto.UserDTO;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -16,47 +17,18 @@ import static com.hmdp.utils.RedisConstants.LOGIN_USER_TTL;
 
 public class LoginInterceptor implements HandlerInterceptor {
 
-    private StringRedisTemplate stringRedisTemplate;
-
-    public LoginInterceptor(StringRedisTemplate stringRedisTemplate) {
-        this.stringRedisTemplate = stringRedisTemplate;
-    }
-
+    /**
+     * 前置拦截器，用于判断用户是否登录
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 1.获取请求头中的token
-        String token = request.getHeader("authorization");
-        if (StrUtil.isBlank(token)) {
-            // 不存在，拦截
-            response.setStatus(401);
+        // 判断当前用户是否已登录
+        if (UserHolder.getUser() == null){
+            // 当前用户未登录，直接拦截
+            response.setStatus(HttpStatus.HTTP_UNAUTHORIZED);
             return false;
         }
-
-        // 2.基于token获取redis中的用户
-        String key = LOGIN_USER_KEY + token;
-        Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(key);
-        if (userMap.isEmpty()) {
-            // 不存在，拦截
-            response.setStatus(401);
-            return false;
-        }
-
-        // 3.将查询到的Hash数据转为UserDTO
-        UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
-
-        // 4.存在，保存用户信息到ThreadLocal
-        UserHolder.saveUser(userDTO);
-
-        // 5.刷新token有效期
-        stringRedisTemplate.expire(key, LOGIN_USER_TTL, TimeUnit.MINUTES);
-
-        // 6.放行
+        // 用户存在，直接放行
         return true;
-    }
-
-    @Override
-    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
-        // 移除用户，避免内存泄漏
-        UserHolder.removeUser();
     }
 }
