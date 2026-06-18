@@ -15,8 +15,7 @@ import java.util.Objects;
 
 import java.util.concurrent.TimeUnit;
 
-import static com.hmdp.utils.RedisConstants.CACHE_SHOP_KEY;
-import static com.hmdp.utils.RedisConstants.CACHE_SHOP_TTL;
+import static com.hmdp.utils.RedisConstants.*;
 
 /**
  * <p>
@@ -50,18 +49,28 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             shop = JSONUtil.toBean(shopJson, Shop.class);
             return Result.ok(shop);
         }
-        // 2.2 缓存未命中，从数据库中查询店铺数据
+
+        // 2.2 缓存未命中，判断缓存中查询的数据是否是空字符串(isNotBlank把null和空字符串给排除了)
+        if (Objects.nonNull(shopJson)){
+            // 2.2.1 当前数据是空字符串（说明该数据是之前缓存的空对象），直接返回失败信息
+            return Result.fail("店铺不存在");
+        }
+        // 2.2.2 当前数据是null，则从数据库中查询店铺数据
         shop = this.getById(id);
+
 
         // 4、判断数据库是否存在店铺数据
         if (Objects.isNull(shop)) {
-            // 4.1 数据库中不存在，返回失败信息
+            // 4.1 数据库中不存在，缓存空对象（解决缓存穿透），返回失败信息
+            stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.SECONDS);
             return Result.fail("店铺不存在");
         }
-        // 4.2 数据库中存在，写入Redis，并返回店铺数据
-        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(shop), CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        // 4.2 数据库中存在，重建缓存，并返回店铺数据
+        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(shop),
+                CACHE_SHOP_TTL, TimeUnit.MINUTES);
         return Result.ok(shop);
     }
+
 
     /**
      * 更新店铺信息，并删除缓存
