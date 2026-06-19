@@ -126,8 +126,13 @@ public class CacheClient {
         // 1、从Redis中查询店铺数据，并判断缓存是否命中
         String jsonStr = stringRedisTemplate.opsForValue().get(key);
         if (StrUtil.isBlank(jsonStr)) {
-            // 1.1 缓存未命中，直接返回失败信息
-            return null;
+            // 1.1 缓存未命中，回源查数据库，写入逻辑过期格式的缓存
+            T t = dbFallback.apply(id);
+            if (Objects.isNull(t)) {
+                return null;
+            }
+            this.setWithLogicalExpire(key, t, timeout, unit);
+            return t;
         }
         // 1.2 缓存命中，将JSON字符串反序列化未对象，并判断缓存数据是否逻辑过期
         RedisData redisData = JSONUtil.toBean(jsonStr, RedisData.class);

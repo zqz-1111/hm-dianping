@@ -26,7 +26,7 @@ mvn test
 - Java 8 (JDK 1.8)
 - MySQL on `localhost:3306`, database `hmdp` — import schema from `src/main/resources/db/hmdp.sql`
 - Redis on `localhost:6379`
-- Nginx for frontend serving (image uploads go to `D:\lesson\nginx-1.18.0\html\hmdp\imgs\`)
+- Nginx for frontend serving (code at `F:\hmdpziliao\nginx-1.18.0`, image uploads go to `F:\hmdpziliao\nginx-1.18.0\html\hmdp\imgs\`)
 
 ## Architecture
 
