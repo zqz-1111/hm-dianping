@@ -1,7 +1,5 @@
 package com.hmdp.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
@@ -11,6 +9,8 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +33,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private ISeckillVoucherService seckillVoucherService;
     @Resource
     private RedisIdWorker redisIdWorker;
+    @Resource
+    private RedissonClient redissonClient;
 
     @Override
     public Result seckillVoucher(Long voucherId) {
@@ -52,18 +54,29 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足！");
         }
 
-        // 5.一人一单：用synchronized锁住用户id，同一用户串行执行
+        // 5、创建订单（使用Redisson分布式锁）
         Long userId = UserHolder.getUser().getId();
-        synchronized (userId.toString().intern()) {
-            // 获取代理对象（事务需要通过代理才能生效）
-            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
-            return proxy.createVoucherOrder(voucherId);
+        // 创建锁对象，锁的key是 lock:order:userId
+        RLock lock = redissonClient.getLock("lock:order:" + userId);
+        // 尝试获取锁
+        boolean isLock = lock.tryLock();
+        if (!isLock) {
+            // 获取锁失败，直接返回失败
+            return Result.fail("一人只能下一单");
         }
+        try {
+            // 获取锁成功，通过代理对象调用事务方法
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+            return proxy.createVoucherOrder(userId, voucherId);
+        } finally {
+            // 释放锁
+            lock.unlock();
+        }
+
     }
 
     @Transactional
-    public Result createVoucherOrder(Long voucherId) {
-        Long userId = UserHolder.getUser().getId();
+    public Result createVoucherOrder(Long userId, Long voucherId) {
         // 5.1.查询该用户是否已购买过该券
         int count = query()
                 .eq("user_id", userId)
@@ -72,6 +85,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (count > 0) {
             return Result.fail("用户已经购买过一次！");
         }
+
 
         // 6.扣减库存
         boolean success = seckillVoucherService.update()
