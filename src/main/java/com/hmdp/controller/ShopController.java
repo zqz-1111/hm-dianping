@@ -6,7 +6,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.service.IShopService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
+import org.springframework.data.redis.core.StringRedisTemplate;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -25,6 +30,9 @@ public class ShopController {
 
     @Resource
     public IShopService shopService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     /**
      * 根据id查询商铺信息
@@ -126,5 +134,17 @@ public class ShopController {
                 .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
         // 返回数据
         return Result.ok(page.getRecords());
+    }
+
+    /**
+     * 查询商铺今日UV（独立访客数）
+     * @param id 商铺id
+     * @return UV数量
+     */
+    @GetMapping("/{id}/uv")
+    public Result queryShopUV(@PathVariable("id") Long id) {
+        String key = RedisConstants.UV_KEY + id + ":" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        Long uv = stringRedisTemplate.opsForHyperLogLog().size(key);
+        return Result.ok(uv);
     }
 }

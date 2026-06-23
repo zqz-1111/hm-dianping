@@ -12,6 +12,7 @@ import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.CacheClient;
 import com.hmdp.utils.RedisConstants;
+import com.hmdp.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -26,7 +27,9 @@ import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.RedisCallback;
 
 import javax.annotation.Resource;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.Comparator;
 import java.util.stream.Collectors;
@@ -74,6 +77,11 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         if (Objects.isNull(shop)) {
             return Result.fail("店铺不存在");
         }
+
+        // UV统计：记录用户访问，用HyperLogLog去重计数
+        Long userId = UserHolder.getUser().getId();
+        String key = UV_KEY + id + ":" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        stringRedisTemplate.opsForHyperLogLog().add(key, userId.toString());
 
         return Result.ok(shop);
     }
